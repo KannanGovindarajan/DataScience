@@ -1,0 +1,99 @@
+---
+title: "R Markdown and Leaflet Assignment"
+author: "Kannan Govindarajan"
+date: "December 24, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 23 Great Schools with Master's Programs in Data Science
+
+This assignment provides interactive map of 23 great schools which offer Master's degree program in Data Science with hyperlink pointing to the details of the program.
+
+Universities Data: 
+http://www.mastersindatascience.org/schools/23-great-schools-with-masters-programs-in-data-science/
+
+Universities Address Data:
+http://nces.ed.gov/ipeds/datacenter/data/HD2015.zip
+
+Latitude Longitude Data:
+Google Maps API - R package ggmap.geocode(address)
+
+## Load Data
+
+Universities data offering data science masters are directly read from the web page  using RCurl and necessary data is extracted using XML package.
+```{r}
+library(bitops)
+library(RCurl)
+library(XML)
+
+url <- "http://www.mastersindatascience.org/schools/23-great-schools-with-masters-programs-in-data-science/"
+html <- getURL(url)
+doc <- htmlParse(html, asText=TRUE)
+universityNames <- xpathSApply(doc, "//ul[@class='top-23-list']/li/h3", xmlValue)
+courseURL <- xpathSApply(doc, "//ul[@class='top-23-list']/li/h3/a", xmlGetAttr, 'href')
+
+
+```
+
+Universities address data are loaded from the source http://nces.ed.gov.
+```{r}
+temp <- tempfile()
+download.file("http://nces.ed.gov/ipeds/datacenter/data/HD2015.zip",temp, mode="wb")
+unzip(temp, "hd2015.csv")
+dd <- read.table("hd2015.csv", sep=",",header=T)
+colnames(dd)[2]<-"universityNames"
+
+dd$Address <- paste(dd$ADDR,",",dd$CITY, ",",dd$STABBR)
+
+```
+
+Merged data from above two sources, by matching the university names.
+```{r}
+universityNames[universityNames == 'Arizona State University'] <- "Arizona State University-Tempe"
+universityNames[universityNames == 'Columbia University'] <- "Columbia University in the City of New York"
+universityNames[universityNames == 'Georgia Tech'] <- "Georgia Institute of Technology-Main Campus"
+universityNames[universityNames == 'North Carolina State University'] <- "North Carolina State University at Raleigh"
+universityNames[universityNames == 'Rutgers University'] <-"Rutgers University-Camden"
+universityNames[universityNames == 'Texas A&M University'] <-"Rutgers University-Camden"
+universityNames[universityNames == 'University of Virginia'] <- "University of Virginia-Main Campus"
+universityNames[universityNames == 'University of Wisconsin'] <- "University of Wisconsin-Madison"
+universityNames[universityNames == 'Texas A&M University'] <- "Texas Southern University"
+universityNames <- gsub(", ","-",universityNames)
+
+df <- cbind(universityNames, courseURL)
+
+lData <- merge(df,dd[,c("universityNames","Address")])
+
+```
+
+Universities address data is supplied to Google maps API to fetch the lattitude and longitude data for display using Leaflet.
+```{r message=FALSE}
+library(ggplot2)
+library(ggmap)
+
+latlong <- geocode(lData$Address, output = "latlona",messaging = FALSE)
+lData$lat <- latlong$lat
+lData$long <- latlong$lon
+
+```
+
+## Display Interactive Map
+
+Display the data as interactive map using Leaflet.
+```{r}
+library(leaflet)
+
+lData <- na.omit(lData)
+
+leaflet(lData) %>% addTiles() %>% addMarkers(~long, ~lat, popup = paste("<a href=",lData$courseURL,">", lData$universityNames,"</a>"), clusterOptions = markerClusterOptions())
+
+```
+
+
+
